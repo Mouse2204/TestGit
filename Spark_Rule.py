@@ -72,7 +72,7 @@ schema = StructType([
 
 # --- OPTIMIZED KAFKA READING ---
 print(f"{time.strftime('%H:%M:%S')} - 📡 Reading from Kafka (optimized)...")
-
+#s
 # Dùng batch mode thay vì trigger time
 df = spark.readStream \
     .format("kafka") \
