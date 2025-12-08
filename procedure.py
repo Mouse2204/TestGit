@@ -1,82 +1,77 @@
-from confluent_kafka import Producer
-import pandas as pd
-import json
+# procedure_enhanced.py
 import time
-import sys
+import json
+import random
+from confluent_kafka import Producer
+from datetime import datetime
+from faker import Faker
 
 conf = {
-    'bootstrap.servers': 'localhost:9092', 
-    'client.id': 'gene-producer-v1'
+    'bootstrap.servers': 'localhost:19092',
+    'client.id': 'enhanced-producer',
 }
 
-# Tên Topic
-TOPIC_NAME = "gene-expression"
+producer = Producer(conf)
+TOPIC_NAME = "user_data_topic"
+fake = Faker()
 
-# Khởi tạo Producer
-try:
-    producer = Producer(conf)
-except Exception as e:
-    print(f"❌ Không thể tạo Producer: {e}")
-    sys.exit(1)
-
-# Hàm Callback: Được gọi khi Kafka xác nhận đã nhận tin (hoặc báo lỗi)
 def delivery_report(err, msg):
     if err is not None:
-        print(f"⚠️ Gửi lỗi: {err}")
+        print(f'Gửi lỗi: {err}')
     else:
-        # Uncomment dòng dưới nếu muốn in log chi tiết từng tin (sẽ spam màn hình)
-        # print(f"✅ Đã gửi tới {msg.topic()} [{msg.partition()}] @ offset {msg.offset()}")
-        pass
+        print(f'Sent: {msg.topic()} [{msg.partition()}]')
 
-def process_csv(file_path):
-    print(f"📂 Đang đọc file {file_path}...")
-    try:
-        df = pd.read_csv(file_path)
-    except FileNotFoundError:
-        print("❌ Không tìm thấy file CSV!")
-        return
-
-    print(f"🚀 Bắt đầu streaming {len(df)} gen vào Kafka...")
+def generate_fake_data():
+    """Tạo dữ liệu với mix hợp lệ và không hợp lệ"""
     
-    count = 0
-    for index, row in df.iterrows():
-        # Chuẩn bị dữ liệu
-        numeric_values = row[1:].values.astype(float)
-        
+    # 70% clean data, 30% dirty data
+    if random.random() < 0.7:
+        # Clean data
         data = {
-            'gene_id': str(row['time']),
-            't40': float(row.get('40', 0)),
-            't50': float(row.get('50', 0)),
-            'max_val': float(numeric_values.max()),
-            'min_val': float(numeric_values.min())
+            "id": fake.uuid4(),
+            "name": fake.name(),
+            "age": random.randint(18, 65),
+            "role": random.choice(["Admin", "User", "Dev", "Manager", "Analyst"]),
+            "salary": round(random.uniform(1000, 10000), 2),
+            "email": fake.email(),
+            "transaction_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        
-        # Chuyển sang JSON string
-        value_json = json.dumps(data)
-        
-        # Gửi tin (Asynchronous)
-        # key=str(row['time']) giúp các tin của cùng 1 gen luôn vào cùng 1 partition (đúng thứ tự)
-        producer.produce(
-            TOPIC_NAME, 
-            key=str(row['time']), 
-            value=value_json, 
-            callback=delivery_report
-        )
-        
-        # Trigger hàm callback (quan trọng để giải phóng bộ nhớ đệm của librdkafka)
-        producer.poll(0)
-        
-        count += 1
-        if count % 100 == 0:
-            print(f"-> Đã push {count} gen...")
-            
-        # Giả lập độ trễ (nếu cần test streaming chậm)
-        # time.sleep(0.01)
-
-    # Quan trọng: Chờ gửi nốt các tin còn trong hàng đợi trước khi thoát
-    print("⏳ Đang xả hàng đợi (Flushing)...")
-    producer.flush()
-    print(f"✅ Hoàn tất! Tổng cộng {count} gen đã được gửi.")
+    else:
+        # Dirty data (test cases)
+        data = {
+            "id": fake.uuid4(),
+            "name": random.choice([fake.name(), "123Invalid", "", None]),
+            "age": random.choice([200, -5, None, random.randint(18, 65)]),
+            "role": random.choice(["Admin", "User", "Dev", "Hacker", "Invalid", None]),
+            "salary": random.choice([-1000, 50000, None, round(random.uniform(1000, 10000), 2)]),
+            "email": random.choice([fake.email(), "invalid-email", "no-at.com", None]),
+            "transaction_date": random.choice([
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "2023-01-01 00:00:00",  # Old date
+                "invalid-date",
+                None
+            ])
+        }
+    return data
 
 if __name__ == "__main__":
-    process_csv("Spellman.csv")
+    print(f"Bắt đầu gửi dữ liệu vào topic '{TOPIC_NAME}'...")
+    
+    try:
+        while True:
+            data = generate_fake_data()
+            value_bytes = json.dumps(data).encode('utf-8')
+            
+            producer.produce(
+                TOPIC_NAME, 
+                value=value_bytes, 
+                callback=delivery_report
+            )
+            producer.poll(0)
+            
+            time.sleep(2)  # 2 giây/record
+
+    except KeyboardInterrupt:
+        print("\nĐang dừng...")
+        producer.flush()
+        print("Đã dừng gửi dữ liệu.")
