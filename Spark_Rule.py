@@ -155,5 +155,5 @@ query = kafka_stream.writeStream \
     .option("checkpointLocation", "/tmp/spark-norm-checkpoint") \
     .trigger(processingTime="10 seconds") \
     .start()
-
+#s
 query.awaitTermination()
