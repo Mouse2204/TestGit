@@ -157,3 +157,5 @@ query = kafka_stream.writeStream \
     .start()
 #s
 query.awaitTermination()
+
+query.awaitTermination()
